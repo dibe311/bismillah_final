@@ -5,7 +5,7 @@ function getDB() {
     $port     = getenv('TIDB_PORT')     ?: '4000';
     $dbname   = getenv('TIDB_DB')       ?: 'medirek';
     $username = getenv('TIDB_USER')     ?: '3WBVxzrG9xZBsBC.root';
-    $password = getenv('TIDB_PASSWORD') ?: 'n4RcjqVuNQNiRPcv';
+    $password = getenv('TIDB_PASSWORD') ?: '2DO3eBBAAcxqmm37';
     $useSSL   = getenv('TIDB_SSL') !== 'false';
 
     $dsn = "mysql:host={$host};port={$port};dbname={$dbname};charset=utf8mb4";
