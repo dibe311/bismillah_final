@@ -35,8 +35,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!$errors) {
         $stmt = $db->prepare("
-            INSERT INTO patients (nik, name, gender, birth_date, blood_type, address, phone, email, insurance_number, insurance_type, allergy, created_by)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+            INSERT INTO patients (nik, name, gender, birth_date, blood_type, address, phone, email, insurance_number, insurance_type, allergy, is_active, created_by)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,1,?)
         ");
         $stmt->execute([
             $data['nik'], $data['name'], $data['gender'], $data['birth_date'],
