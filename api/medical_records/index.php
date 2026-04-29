@@ -16,28 +16,30 @@ $limit  = 20;
 $offset = ($page - 1) * $limit;
 
 $where  = 'WHERE 1=1';
-$params = [];
+$params = [];   // positional params — compatible with TiDB
 
 // Dokter: only own records
 if ($user['role'] === 'dokter') {
-    $where .= ' AND mr.doctor_id = :doc';
-    $params[':doc'] = $user['id'];
+    $where   .= ' AND mr.doctor_id = ?';
+    $params[] = (int)$user['id'];
 }
 
 if ($search) {
-    $where .= ' AND (p.name LIKE :q OR mr.diagnosis LIKE :q2 OR mr.icd_code LIKE :q3)';
-    $s = "%$search%";
-    $params[':q'] = $s; $params[':q2'] = $s; $params[':q3'] = $s;
+    $where   .= ' AND (p.name LIKE ? OR mr.diagnosis LIKE ? OR mr.icd_code LIKE ?)';
+    $s        = "%$search%";
+    $params[] = $s;
+    $params[] = $s;
+    $params[] = $s;
 }
 
-$total = $db->prepare("
+$cntStmt = $db->prepare("
     SELECT COUNT(*)
     FROM medical_records mr
     LEFT JOIN patients p ON p.id = mr.patient_id
     $where
 ");
-$total->execute($params);
-$total = (int)$total->fetchColumn();
+$cntStmt->execute($params);
+$total      = (int)$cntStmt->fetchColumn();
 $totalPages = max(1, (int)ceil($total / $limit));
 
 $stmt = $db->prepare("
