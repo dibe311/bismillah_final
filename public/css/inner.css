@@ -1,0 +1,186 @@
+
+.doctor-card {
+  background: var(--white);
+  border: 1px solid var(--gray-300);
+  border-radius: var(--r-md);
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: border-color var(--ease);
+}
+
+.doctor-card:hover { border-color: var(--blue-muted); }
+
+.doctor-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--navy);
+  color: var(--white);
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.doctor-name { font-size: 14px; font-weight: 700; color: var(--gray-900); }
+.doctor-spec { font-size: 12px; color: var(--gray-500); margin-top: 2px; }
+.doctor-status { margin-left: auto; }
+
+/* DASHBOARD GREETING BANNER */
+.greeting-banner {
+  background: var(--navy);
+  border-radius: var(--r-md);
+  padding: 20px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  gap: 16px;
+}
+
+.greeting-text h2 {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--white);
+  margin-bottom: 4px;
+}
+
+.greeting-text p {
+  font-size: 13px;
+  color: rgba(255,255,255,.6);
+}
+
+.greeting-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255,255,255,.1);
+  border-radius: var(--r);
+  padding: 8px 14px;
+  font-size: 13px;
+  color: rgba(255,255,255,.85);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* SECTION HEADER inline */
+.section-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.section-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gray-600);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+/* CALL PATIENT CARD (dokter dashboard) */
+.call-card {
+  background: var(--white);
+  border: 1px solid var(--gray-300);
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 8px;
+  transition: border-color var(--ease);
+}
+
+.call-card:hover { border-color: var(--blue-muted); }
+.call-card:last-child { margin-bottom: 0; }
+
+.call-num {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r);
+  background: var(--amber-bg);
+  color: var(--amber);
+  border: 1px solid var(--amber-border);
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.call-info { flex: 1; min-width: 0; }
+.call-patient { font-size: 14px; font-weight: 600; color: var(--gray-900); }
+.call-sub { font-size: 12px; color: var(--gray-500); margin-top: 2px; }
+
+/* ACTIVE QUEUE BANNER (pasien) */
+.queue-banner {
+  background: var(--blue-pale);
+  border: 1px solid var(--blue-muted);
+  border-radius: var(--r-md);
+  padding: 20px 22px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 20px;
+}
+
+.queue-big-number {
+  font-size: 40px;
+  font-weight: 700;
+  color: var(--blue);
+  letter-spacing: -2px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.queue-banner-info h3 { font-size: 16px; font-weight: 700; color: var(--gray-900); margin-bottom: 4px; }
+.queue-banner-info p { font-size: 13px; color: var(--gray-600); }
+
+/* STATS CARDS ADDITIONAL — narrow pill */
+.stat-pill {
+  background: var(--white);
+  border: 1px solid var(--gray-300);
+  border-radius: var(--r);
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.stat-pill-val { font-size: 18px; font-weight: 700; color: var(--gray-900); }
+.stat-pill-label { font-size: 12px; color: var(--gray-500); }
+
+/* ALERT ALLERGY BADGE */
+.allergy-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--red-bg);
+  color: var(--red);
+  border: 1px solid var(--red-border);
+  border-radius: var(--r-sm);
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* VITAL ABNORMAL HIGHLIGHT */
+.vital-item.abnormal {
+  border-color: var(--amber-border);
+  background: var(--amber-bg);
+}
+.vital-item.abnormal .vital-value { color: var(--amber); }
+
+/* PRINT */
+@media print {
+  .sidebar, .topbar, .btn, .page-header .btn { display: none !important; }
+  .main-content { margin-left: 0 !important; }
+  .card { border: 1px solid #ccc; }
+}
