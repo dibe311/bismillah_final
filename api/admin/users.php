@@ -93,24 +93,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'edit'
     $mode = 'edit';
 }
 
-// Toggle Aktif / Nonaktif
+// Toggle Aktif / Nonaktif — FIX: proses dulu sebelum query data tampilan
 if (isset($_GET['toggle']) && is_numeric($_GET['toggle'])) {
     $tid  = (int)$_GET['toggle'];
     $self = (int)currentUser()['id'];
     if ($tid === $self) {
         flashMessage('error', 'Anda tidak bisa menonaktifkan akun sendiri.');
     } else {
-        $cur = $db->prepare("SELECT is_active, name FROM users WHERE id=?");
+        $cur = $db->prepare("SELECT is_active, name FROM users WHERE id = ?");
         $cur->execute([$tid]);
-        $cur = $cur->fetch();
-        if ($cur) {
-            $newStatus = $cur['is_active'] ? 0 : 1;
-            $db->prepare("UPDATE users SET is_active=?, updated_at=NOW() WHERE id=?")->execute([$newStatus, $tid]);
+        $row = $cur->fetch();
+        if ($row) {
+            $newStatus = $row['is_active'] ? 0 : 1;
+            $db->prepare("UPDATE users SET is_active = ?, updated_at = NOW() WHERE id = ?")
+               ->execute([$newStatus, $tid]);
             $label = $newStatus ? 'diaktifkan' : 'dinonaktifkan';
-            flashMessage('success', "User <strong>" . htmlspecialchars($cur['name']) . "</strong> berhasil $label.");
+            flashMessage('success', "User <strong>" . htmlspecialchars($row['name']) . "</strong> berhasil $label.");
+        } else {
+            flashMessage('error', 'User tidak ditemukan.');
         }
     }
-    redirect('admin/users');
+    // FIX: Pakai header langsung agar tidak ada loop di Vercel
+    header('Location: ' . BASE_URL . '/admin/users');
+    exit;
 }
 
 // Hapus User
@@ -120,15 +125,19 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
     if ($did === $self) {
         flashMessage('error', 'Anda tidak bisa menghapus akun sendiri.');
     } else {
-        $u = $db->prepare("SELECT name FROM users WHERE id=?");
+        $u = $db->prepare("SELECT name FROM users WHERE id = ?");
         $u->execute([$did]);
-        $u = $u->fetch();
-        if ($u) {
-            $db->prepare("DELETE FROM users WHERE id=?")->execute([$did]);
-            flashMessage('success', "User <strong>" . htmlspecialchars($u['name']) . "</strong> berhasil dihapus.");
+        $row = $u->fetch();
+        if ($row) {
+            $db->prepare("DELETE FROM users WHERE id = ?")->execute([$did]);
+            flashMessage('success', "User <strong>" . htmlspecialchars($row['name']) . "</strong> berhasil dihapus.");
+        } else {
+            flashMessage('error', 'User tidak ditemukan.');
         }
     }
-    redirect('admin/users');
+    // FIX: Pakai header langsung agar tidak ada loop di Vercel
+    header('Location: ' . BASE_URL . '/admin/users');
+    exit;
 }
 
 /* ================================================================
@@ -166,7 +175,7 @@ $activeMenu = 'users';
 ob_start();
 ?>
 
-<?php if ($flash): ?>
+<?php $flash = getFlash(); if ($flash): ?>
 <div class="alert alert-<?= $flash['type'] ?>"><?= $flash['message'] ?></div>
 <?php endif; ?>
 
@@ -334,12 +343,12 @@ ob_start();
                             <?php if ((int)$u['id'] !== (int)currentUser()['id']): ?>
                             <a href="<?= BASE_URL ?>/admin/users?toggle=<?= $u['id'] ?>"
                                class="btn btn-sm <?= $u['is_active'] ? 'btn-ghost' : 'btn-success' ?>"
-                               data-confirm="<?= $u['is_active'] ? 'Nonaktifkan' : 'Aktifkan' ?> user <?= sanitize($u['name']) ?>?">
+                               onclick="return confirm('<?= $u['is_active'] ? 'Nonaktifkan' : 'Aktifkan' ?> user <?= sanitize($u['name']) ?>?')">
                                <?= $u['is_active'] ? 'Nonaktifkan' : 'Aktifkan' ?>
                             </a>
                             <a href="<?= BASE_URL ?>/admin/users?delete=<?= $u['id'] ?>"
                                class="btn btn-danger btn-sm"
-                               data-confirm="Hapus permanen user <?= sanitize($u['name']) ?>? Tindakan ini tidak bisa dibatalkan.">
+                               onclick="return confirm('Hapus permanen user <?= sanitize($u['name']) ?>? Tindakan ini tidak bisa dibatalkan.')">
                                Hapus
                             </a>
                             <?php else: ?>
