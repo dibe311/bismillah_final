@@ -13,21 +13,22 @@ $user = currentUser();
 $date   = $_GET['date']   ?? date('Y-m-d');
 $status = $_GET['status'] ?? '';
 
-$where  = 'WHERE q.queue_date = :date';
-$params = [':date' => $date];
+// Gunakan positional params (?) agar tidak ada konflik named params di PDO + TiDB
+$where  = 'WHERE q.queue_date = ?';
+$params = [$date];
 
 if ($status) {
     $allowed = ['waiting','called','in_progress','done','cancelled'];
     if (in_array($status, $allowed, true)) {
-        $where .= ' AND q.status = :status';
-        $params[':status'] = $status;
+        $where .= ' AND q.status = ?';
+        $params[] = $status;
     }
 }
 
 // Dokter sees only their own assignments
 if ($user['role'] === 'dokter') {
-    $where .= ' AND q.doctor_id = :doc';
-    $params[':doc'] = $user['id'];
+    $where .= ' AND q.doctor_id = ?';
+    $params[] = (int)$user['id'];
 }
 
 $stmt = $db->prepare("
@@ -48,8 +49,8 @@ $stmt->execute($params);
 $queues = $stmt->fetchAll();
 
 // Status tab counts
-$cntStmt = $db->prepare("SELECT status, COUNT(*) AS cnt FROM queues WHERE queue_date = :d GROUP BY status");
-$cntStmt->execute([':d' => $date]);
+$cntStmt = $db->prepare("SELECT status, COUNT(*) AS cnt FROM queues WHERE queue_date = ? GROUP BY status");
+$cntStmt->execute([$date]);
 $statusCounts = [];
 foreach ($cntStmt->fetchAll() as $r) $statusCounts[$r['status']] = $r['cnt'];
 
