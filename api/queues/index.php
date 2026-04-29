@@ -41,8 +41,8 @@ $stmt = $db->prepare("
     FROM   queues q
     LEFT JOIN patients p         ON q.patient_id = p.id
     LEFT JOIN users u            ON q.doctor_id  = u.id
-    LEFT JOIN initial_checks ic  ON ic.queues_id  = q.id
-    LEFT JOIN medical_records mr ON mr.id_queues = q.id    
+    LEFT JOIN initial_checks ic  ON ic.queues_id = q.id
+    LEFT JOIN medical_records mr ON mr.queues_id = q.id
     $where
     ORDER BY q.created_at ASC
 ");
