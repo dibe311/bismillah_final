@@ -32,7 +32,7 @@ if ($user['role'] === 'dokter') {
 }
 
 $stmt = $db->prepare("
-    SELECT q.id, q.queue_number, q.status, q.queue_date, q.created_at, q.notes,
+    SELECT q.id AS queue_id, q.queue_number, q.status, q.queue_date, q.created_at, q.notes,
            p.id   AS patient_id,  p.name  AS patient_name, p.gender, p.birth_date,
            u.name AS doctor_name,
            ic.blood_pressure, ic.temperature, ic.chief_complaint,
@@ -167,7 +167,7 @@ ob_start();
               <?php if (hasRole(['admin','perawat']) && $q['status'] === 'waiting'): ?>
               <button class="btn btn-primary btn-sm"
                       data-queue-action="called"
-                      data-queue-id="<?= $q['id'] ?>">Panggil</button>
+                      data-queue-id="<?= $q['queue_id'] ?>">Panggil</button>
               <?php endif; ?>
 
               <!-- Dokter: mulai pemeriksaan / buat rekam medis -->
@@ -175,7 +175,7 @@ ob_start();
                 <?php if ($q['status'] === 'called'): ?>
                 <button class="btn btn-success btn-sm"
                         data-queue-action="in_progress"
-                        data-queue-id="<?= $q['id'] ?>">Mulai</button>
+                        data-queue-id="<?= $q['queue_id'] ?>">Mulai</button>
                 <?php elseif ($q['status'] === 'in_progress' && !$q['record_id']): ?>
                 <a href="<?= BASE_URL ?>/medical_records/create?queue_id=<?= $q['id'] ?>"
                    class="btn btn-primary btn-sm">Rekam Medis</a>
@@ -190,7 +190,7 @@ ob_start();
                      && in_array($q['status'], ['waiting','called'], true)): ?>
               <button class="btn btn-ghost btn-sm"
                       data-queue-action="cancelled"
-                      data-queue-id="<?= $q['id'] ?>"
+                      data-queue-id="<?= $q['queue_id'] ?>"
                       data-confirm="Batalkan antrian <?= sanitize($q['queue_number']) ?>?">
                 Batal
               </button>
