@@ -32,8 +32,7 @@ if ($user['role'] === 'dokter') {
 }
 
 $stmt = $db->prepare("
-    SELECT q.id, q.queue_number, q.status, q.queue
-    _date, q.created_at, q.notes,
+    SELECT q.id, q.queue_number, q.status, q.queue_date, q.created_at, q.notes,
            p.id   AS patient_id,  p.name  AS patient_name, p.gender, p.birth_date,
            u.name AS doctor_name,
            ic.blood_pressure, ic.temperature, ic.chief_complaint,
@@ -41,8 +40,8 @@ $stmt = $db->prepare("
     FROM   queues q
     LEFT JOIN patients p         ON q.patient_id = p.id
     LEFT JOIN users u            ON q.doctor_id  = u.id
-    LEFT JOIN initial_checks ic  ON ic.queues_id = q.id
-    LEFT JOIN medical_records mr ON mr.queues_id = q.id
+    LEFT JOIN initial_checks ic  ON ic.queue_id  = q.id
+    LEFT JOIN medical_records mr ON mr.queue_id  = q.id
     $where
     ORDER BY q.created_at ASC
 ");
