@@ -1,10 +1,6 @@
 <?php
 /**
- * queues/create.php
- * PERBAIKAN:
- * 1. Tombol submit TIDAK disabled - user bisa submit meski AJAX gagal
- * 2. Pencarian ganda: AJAX dropdown + tabel klik langsung
- * 3. Validasi server-side tetap berjalan meski JS mati
+ * queues/create.php — sudah disesuaikan dengan struktur tabel
  */
 require_once __DIR__ . '/../config/app.php';
 require_once __DIR__ . '/../config/database.php';
@@ -14,7 +10,6 @@ $db     = getDB();
 $errors = [];
 $today  = date('Y-m-d');
 
-// Ambil dokter aktif
 $doctors = $db->query("
     SELECT u.id, u.name, COALESCE(dp.specialization, 'Dokter Umum') AS specialization
     FROM users u
@@ -23,14 +18,12 @@ $doctors = $db->query("
     ORDER BY u.name ASC
 ")->fetchAll();
 
-// Ambil SEMUA pasien aktif untuk tabel lokal (tidak butuh AJAX)
 $allPatients = $db->query("
     SELECT id, nik, name, gender, birth_date, phone, insurance_type
     FROM patients WHERE is_active = 1
     ORDER BY name ASC LIMIT 1000
 ")->fetchAll();
 
-// Info antrian hari ini
 $infoStmt = $db->prepare("SELECT status, COUNT(*) AS cnt FROM queues WHERE queue_date = ? GROUP BY status");
 $infoStmt->execute([$today]);
 $infoCnts = [];
@@ -38,7 +31,6 @@ foreach ($infoStmt->fetchAll() as $r) $infoCnts[$r['status']] = (int)$r['cnt'];
 $totalToday = array_sum($infoCnts);
 $nextNum    = generateQueueNumber($db, $today);
 
-// Pre-fill dari URL
 $prePatientId   = (int)($_GET['patient_id'] ?? 0);
 $prePatientName = '';
 $prePatientInfo = '';
@@ -54,7 +46,6 @@ if ($prePatientId) {
     if (!$prePatientName) $prePatientId = 0;
 }
 
-// ── POST Handler ─────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $patientId = (int)($_POST['patient_id'] ?? 0);
     $doctorId  = ($_POST['doctor_id'] ?? '') !== '' ? (int)$_POST['doctor_id'] : null;
@@ -83,8 +74,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$errors) {
         $queueNum = generateQueueNumber($db, $today);
         $db->prepare("
-            INSERT INTO queues (queue_number, patient_id, doctor_id, queue_date, status, notes, created_by)
-            VALUES (?, ?, ?, ?, 'waiting', ?, ?)
+            INSERT INTO queues (queue_number, patient_id, doctor_id, queue_date, status, notes, created_by, created_at)
+            VALUES (?, ?, ?, ?, 'waiting', ?, ?, NOW())
         ")->execute([$queueNum, $patientId, $doctorId, $today, $notes ?: null, currentUser()['id']]);
 
         flashMessage('success', "Antrian <strong>$queueNum</strong> berhasil dibuat.");
@@ -92,7 +83,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Restore pilihan pasien setelah error POST
 $postPatientId   = (int)($_POST['patient_id'] ?? $prePatientId);
 $postPatientName = '';
 $postPatientInfo = '';
@@ -108,7 +98,7 @@ if ($postPatientId) {
 }
 
 $pageTitle  = 'Buat Antrian';
-$activeMenu = 'queues_create';
+$activeMenu = 'queues';
 ob_start();
 ?>
 
@@ -137,16 +127,12 @@ ob_start();
 <?php endif; ?>
 
 <div class="two-col-grid">
-
-    <!-- ══ KIRI: FORM ════════════════════════════════════════════════ -->
     <div class="flex flex-col gap-3">
-
         <div class="card">
             <div class="card-header"><span class="card-title">Data Antrian</span></div>
             <div class="card-body">
                 <form method="POST" action="" id="queueForm" novalidate>
 
-                    <!-- Pencarian pasien -->
                     <div class="form-group">
                         <label class="form-label">Cari & Pilih Pasien <span class="req">*</span></label>
                         <div style="position:relative">
@@ -161,12 +147,10 @@ ob_start();
                                         box-shadow:var(--shadow-md);z-index:200;max-height:200px;overflow-y:auto">
                             </div>
                         </div>
-                        <!-- PERBAIKAN KRITIS: hidden field yang dikirim ke server -->
                         <input type="hidden" name="patient_id" id="patientIdHidden" value="<?= $postPatientId ?>">
                         <div class="form-hint">Atau klik <strong>Pilih</strong> dari tabel pasien di bawah</div>
                     </div>
 
-                    <!-- Info pasien terpilih -->
                     <div id="selectedBox"
                          style="display:<?= $postPatientId ? 'flex' : 'none' ?>;
                                 align-items:center;gap:12px;background:var(--blue-pale);
@@ -184,26 +168,22 @@ ob_start();
                         </div>
                         <button type="button" onclick="clearPatient()"
                                 style="border:1px solid var(--gray-300);background:none;border-radius:var(--r-sm);
-                                       padding:3px 8px;font-size:11px;color:var(--gray-500);cursor:pointer">
-                            ✕
-                        </button>
+                                       padding:3px 8px;font-size:11px;color:var(--gray-500);cursor:pointer">✕</button>
                     </div>
 
-                    <!-- Dokter -->
                     <div class="form-group">
                         <label class="form-label">Tugaskan ke Dokter</label>
                         <select class="form-control" name="doctor_id">
                             <option value="">— Belum ditugaskan —</option>
                             <?php foreach ($doctors as $d): ?>
                             <option value="<?= $d['id'] ?>"
-                                <?= ((int)($_POST['doctor_id'] ?? 0) === $d['id']) ? 'selected' : '' ?>>
+                                <?= ((int)($_POST['doctor_id'] ?? 0) === (int)$d['id']) ? 'selected' : '' ?>>
                                 dr. <?= sanitize($d['name']) ?> — <?= sanitize($d['specialization']) ?>
                             </option>
                             <?php endforeach; ?>
                         </select>
                     </div>
 
-                    <!-- Catatan -->
                     <div class="form-group">
                         <label class="form-label">Catatan</label>
                         <textarea class="form-control" name="notes" rows="2"
@@ -212,7 +192,6 @@ ob_start();
 
                     <div class="flex justify-end gap-2" style="margin-top:8px">
                         <a href="<?= BASE_URL ?>/queues" class="btn btn-outline">Batal</a>
-                        <!-- PERBAIKAN: TIDAK disabled, validasi di server -->
                         <button type="submit" class="btn btn-primary">
                             <svg viewBox="0 0 20 20" fill="currentColor">
                                 <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd"/>
@@ -220,12 +199,10 @@ ob_start();
                             Daftarkan ke Antrian
                         </button>
                     </div>
-
                 </form>
             </div>
         </div>
 
-        <!-- Tabel pasien — klik langsung pilih -->
         <div class="card">
             <div class="card-header">
                 <span class="card-title">Daftar Pasien (<?= count($allPatients) ?>)</span>
@@ -237,9 +214,7 @@ ob_start();
             <div style="max-height:340px;overflow-y:auto">
                 <table class="data-table">
                     <thead>
-                        <tr>
-                            <th>Nama</th><th>NIK</th><th>L/P</th><th>Usia</th><th>Aksi</th>
-                        </tr>
+                        <tr><th>Nama</th><th>NIK</th><th>L/P</th><th>Usia</th><th>Aksi</th></tr>
                     </thead>
                     <tbody id="tblBody">
                         <?php if (!$allPatients): ?>
@@ -278,12 +253,9 @@ ob_start();
                 </table>
             </div>
         </div>
+    </div>
 
-    </div><!-- /kiri -->
-
-    <!-- ══ KANAN: INFO ════════════════════════════════════════════════ -->
     <div class="flex flex-col gap-3">
-
         <div class="card">
             <div class="card-header"><span class="card-title">Status Antrian Hari Ini</span></div>
             <div class="card-body">
@@ -302,12 +274,8 @@ ob_start();
                     </div>
                 </div>
                 <div style="background:var(--navy);border-radius:var(--r);padding:14px;margin-top:12px;text-align:center">
-                    <div style="font-size:11px;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.07em;margin-bottom:2px">
-                        Nomor Berikutnya
-                    </div>
-                    <div style="font-size:38px;font-weight:700;color:white;letter-spacing:-1px;line-height:1.1">
-                        <?= $nextNum ?>
-                    </div>
+                    <div style="font-size:11px;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.07em;margin-bottom:2px">Nomor Berikutnya</div>
+                    <div style="font-size:38px;font-weight:700;color:white;letter-spacing:-1px;line-height:1.1"><?= $nextNum ?></div>
                 </div>
             </div>
         </div>
@@ -333,60 +301,36 @@ ob_start();
                 <?php endif; ?>
             </div>
         </div>
-
-        <div class="card" style="border-color:var(--blue-muted);background:var(--blue-pale)">
-            <div class="card-body" style="padding:14px">
-                <div style="font-size:11px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">
-                    Cara Membuat Antrian
-                </div>
-                <ol style="padding-left:16px;font-size:12px;color:var(--gray-700);line-height:2;margin:0">
-                    <li>Ketik nama/NIK di kolom pencarian, <em>atau</em><br>klik <strong>Pilih</strong> dari tabel di bawah</li>
-                    <li>Pilih dokter (opsional)</li>
-                    <li>Klik <strong>Daftarkan ke Antrian</strong></li>
-                </ol>
-            </div>
-        </div>
-
-    </div><!-- /kanan -->
-
+    </div>
 </div>
 
-<style>
-.tr-sel { background: var(--blue-pale) !important; }
-.tr-sel td { color: var(--blue); font-weight: 600; }
-</style>
+<style>.tr-sel{background:var(--blue-pale)!important}.tr-sel td{color:var(--blue);font-weight:600}</style>
 
 <script>
 (function() {
-    const searchBox    = document.getElementById('patientSearchBox');
-    const ajaxDrop     = document.getElementById('ajaxDropdown');
-    const hiddenId     = document.getElementById('patientIdHidden');
-    const selBox       = document.getElementById('selectedBox');
-    const selAvatar    = document.getElementById('selAvatar');
-    const selName      = document.getElementById('selName');
-    const selInfo      = document.getElementById('selInfo');
-    const tblFilter    = document.getElementById('tblFilter');
+    const searchBox = document.getElementById('patientSearchBox');
+    const ajaxDrop  = document.getElementById('ajaxDropdown');
+    const hiddenId  = document.getElementById('patientIdHidden');
+    const selBox    = document.getElementById('selectedBox');
+    const selAvatar = document.getElementById('selAvatar');
+    const selName   = document.getElementById('selName');
+    const selInfo   = document.getElementById('selInfo');
+    const tblFilter = document.getElementById('tblFilter');
 
-    // ── Pilih pasien ─────────────────────────────────────────────────
     window.pickPatient = function(id, name, nik, gender, age, insurance) {
-        hiddenId.value         = id;
-        searchBox.value        = name;
-        selAvatar.textContent  = name.substring(0,2).toUpperCase();
-        selName.textContent    = name;
-        selInfo.textContent    = 'NIK: ' + nik + ' · ' + (gender==='L'?'L':'P') + ' · ' + age + ' tahun · ' + insurance;
-        selBox.style.display   = 'flex';
+        hiddenId.value        = id;
+        searchBox.value       = name;
+        selAvatar.textContent = name.substring(0,2).toUpperCase();
+        selName.textContent   = name;
+        selInfo.textContent   = 'NIK: ' + nik + ' · ' + (gender==='L'?'L':'P') + ' · ' + age + ' tahun · ' + (insurance||'Umum');
+        selBox.style.display  = 'flex';
         ajaxDrop.style.display = 'none';
-
-        // Highlight baris
         document.querySelectorAll('.ptrow').forEach(r => r.classList.remove('tr-sel'));
         const row = document.getElementById('prow' + id);
         if (row) { row.classList.add('tr-sel'); row.scrollIntoView({block:'nearest'}); }
-
-        // Scroll ke form
         document.getElementById('queueForm').scrollIntoView({behavior:'smooth', block:'start'});
     };
 
-    // ── Hapus pilihan ─────────────────────────────────────────────────
     window.clearPatient = function() {
         hiddenId.value       = '';
         searchBox.value      = '';
@@ -394,24 +338,18 @@ ob_start();
         document.querySelectorAll('.ptrow').forEach(r => r.classList.remove('tr-sel'));
     };
 
-    // ── AJAX autocomplete ─────────────────────────────────────────────
     let timer;
     searchBox.addEventListener('input', function() {
         clearTimeout(timer);
         const q = this.value.trim();
-
-        // Filter tabel lokal sekaligus
         filterTable(q);
-
         if (q.length < 2) { ajaxDrop.style.display = 'none'; return; }
-
         timer = setTimeout(async () => {
             try {
                 const r = await fetch('/apb/search_patients?q=' + encodeURIComponent(q), {credentials:'same-origin'});
                 if (!r.ok) throw 0;
                 const data = await r.json();
                 if (!Array.isArray(data)) throw 0;
-
                 ajaxDrop.innerHTML = '';
                 if (!data.length) {
                     ajaxDrop.innerHTML = '<div style="padding:10px 12px;font-size:12px;color:var(--gray-500)">Tidak ditemukan — coba klik Pilih dari tabel</div>';
@@ -422,7 +360,7 @@ ob_start();
                         d.innerHTML = '<strong>' + e(p.name) + '</strong><span style="color:var(--gray-400);margin-left:8px;font-size:11px">NIK: ' + e(p.nik) + ' · ' + (p.gender==='L'?'L':'P') + ' · ' + p.age + 'th</span>';
                         d.onmouseover = () => d.style.background = 'var(--blue-pale)';
                         d.onmouseout  = () => d.style.background = '';
-                        d.onclick     = () => pickPatient(p.id, p.name, p.nik, p.gender, p.age, p.insurance_type||'Umum');
+                        d.onclick = () => pickPatient(p.id, p.name, p.nik, p.gender, p.age, p.insurance_type||'Umum');
                         ajaxDrop.appendChild(d);
                     });
                 }
@@ -436,15 +374,11 @@ ob_start();
             ajaxDrop.style.display = 'none';
     });
 
-    // ── Filter tabel ─────────────────────────────────────────────────
     function filterTable(q) {
         const rows = document.querySelectorAll('.ptrow');
         const lq   = q.toLowerCase();
         rows.forEach(r => {
-            const match = !q
-                || r.dataset.name.includes(lq)
-                || r.dataset.nik.includes(q)
-                || r.dataset.phone.includes(q);
+            const match = !q || r.dataset.name.includes(lq) || r.dataset.nik.includes(q) || r.dataset.phone.includes(q);
             r.style.display = match ? '' : 'none';
         });
     }
@@ -456,6 +390,5 @@ ob_start();
 </script>
 
 <?php
-// BUG FIX: gunakan __DIR__ agar path selalu absolut, tidak bergantung working directory server
 $pageContent = ob_get_clean();
 require_once __DIR__ . '/../includes/layout.php';

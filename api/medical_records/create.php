@@ -1,9 +1,10 @@
 <?php
 /**
- * medical_records/create.php — MODULE 4 (CORE CLINICAL ENGINE)
- * Doctor-only. SOAP medical record form.
- * Pre-fills data from initial_checks (S from chief_complaint, O from vitals).
- * On submit: INSERT medical_records + UPDATE queue status → 'done'.
+ * medical_records/create.php — disesuaikan dengan struktur tabel DB
+ * Kolom DB: complaints, diagnosis, treatment, prescription, notes,
+ *           icd_code, is_referred, follow_up_date,
+ *           + kolom baru: chief_complaint, objective_notes, lab_notes,
+ *                         follow_up_notes, referral_notes
  */
 require_once __DIR__ . '/../config/app.php';
 require_once __DIR__ . '/../config/database.php';
@@ -12,15 +13,13 @@ requireRole('dokter');
 $db   = getDB();
 $user = currentUser();
 
-$queueId    = (int)($_GET['queue_id']    ?? $_POST['queue_id']    ?? 0);
-$patientIdQ = (int)($_GET['patient_id']  ?? 0);
-
+$queueId = (int)($_GET['queue_id'] ?? $_POST['queue_id'] ?? 0);
 if (!$queueId) { flashMessage('error', 'ID antrian tidak valid.'); redirect('queues'); }
 
-// Load queue — must belong to this doctor
+// Load antrian — harus milik dokter ini
 $q = $db->prepare("
     SELECT q.id, q.queue_number, q.status, q.queue_date, q.doctor_id,
-           p.id   AS patient_id,   p.name  AS patient_name,
+           p.id AS patient_id, p.name AS patient_name,
            p.birth_date, p.gender, p.blood_type, p.allergy, p.insurance_type
     FROM queues q
     LEFT JOIN patients p ON q.patient_id = p.id
@@ -34,7 +33,7 @@ if (!$queue) {
     redirect('queues');
 }
 
-// Prevent duplicate record
+// Cegah rekam medis duplikat
 $dupRec = $db->prepare("SELECT id FROM medical_records WHERE queue_id = ?");
 $dupRec->execute([$queueId]);
 if ($dupRec->fetch()) {
@@ -42,7 +41,7 @@ if ($dupRec->fetch()) {
     redirect('queues');
 }
 
-// Load initial check (O data + nurse's S data)
+// Load initial check dari perawat
 $ic = $db->prepare("
     SELECT ic.*, u.name AS nurse_name
     FROM initial_checks ic
@@ -52,9 +51,9 @@ $ic = $db->prepare("
 $ic->execute([$queueId]);
 $initCheck = $ic->fetch();
 
-// Patient's last records for context
+// Riwayat kunjungan sebelumnya
 $prevRecords = $db->prepare("
-    SELECT mr.visit_date, mr.diagnosis, mr.prescription, mr.treatment
+    SELECT mr.visit_date, mr.diagnosis, mr.prescription
     FROM medical_records mr
     WHERE mr.patient_id = ? AND mr.queue_id != ?
     ORDER BY mr.visit_date DESC LIMIT 5
@@ -65,60 +64,63 @@ $prevRecords = $prevRecords->fetchAll();
 $errors = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $data = [
-        'chief_complaint'  => trim($_POST['chief_complaint']  ?? ''),
-        'objective_notes'  => trim($_POST['objective_notes']  ?? ''),
-        'diagnosis'        => trim($_POST['diagnosis']        ?? ''),
-        'icd_code'         => strtoupper(trim($_POST['icd_code'] ?? '')),
-        'treatment'        => trim($_POST['treatment']        ?? ''),
-        'prescription'     => trim($_POST['prescription']     ?? ''),
-        'lab_notes'        => trim($_POST['lab_notes']        ?? ''),
-        'follow_up_date'   => $_POST['follow_up_date']  ?? null ?: null,
-        'follow_up_notes'  => trim($_POST['follow_up_notes']  ?? ''),
-        'is_referred'      => isset($_POST['is_referred']) ? 1 : 0,
-        'referral_notes'   => trim($_POST['referral_notes']   ?? ''),
-    ];
+    $chief_complaint = trim($_POST['chief_complaint'] ?? '');
+    $objective_notes = trim($_POST['objective_notes'] ?? '');
+    $diagnosis       = trim($_POST['diagnosis']       ?? '');
+    $icd_code        = strtoupper(trim($_POST['icd_code'] ?? ''));
+    $treatment       = trim($_POST['treatment']       ?? '');
+    $prescription    = trim($_POST['prescription']    ?? '');
+    $lab_notes       = trim($_POST['lab_notes']       ?? '');
+    $follow_up_date  = $_POST['follow_up_date']  ?? null ?: null;
+    $follow_up_notes = trim($_POST['follow_up_notes'] ?? '');
+    $is_referred     = isset($_POST['is_referred']) ? 1 : 0;
+    $referral_notes  = trim($_POST['referral_notes']  ?? '');
 
-    if (empty($data['chief_complaint'])) $errors[] = 'Keluhan (Subjektif) wajib diisi.';
-    if (empty($data['diagnosis']))       $errors[] = 'Diagnosa (Assessment) wajib diisi.';
+    if (empty($chief_complaint)) $errors[] = 'Keluhan (Subjektif) wajib diisi.';
+    if (empty($diagnosis))       $errors[] = 'Diagnosa (Assessment) wajib diisi.';
 
     if (!$errors) {
         $db->beginTransaction();
         try {
-            $ins = $db->prepare("
+            $db->prepare("
                 INSERT INTO medical_records
-                  (queue_id, patient_id, doctor_id, visit_date,
-                   chief_complaint, objective_notes, diagnosis, icd_code, treatment,
-                   prescription, lab_notes, follow_up_date, follow_up_notes,
-                   is_referred, referral_notes)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ");
-            $ins->execute([
+                    (queue_id, patient_id, doctor_id, visit_date,
+                     chief_complaint, complaints,
+                     objective_notes, diagnosis, icd_code,
+                     treatment, prescription,
+                     lab_notes, notes,
+                     follow_up_date, follow_up_notes,
+                     is_referred, referral_notes)
+                VALUES (?, ?, ?, ?,  ?, ?,  ?, ?, ?,  ?, ?,  ?, ?,  ?, ?,  ?, ?)
+            ")->execute([
                 $queueId,
                 $queue['patient_id'],
                 $user['id'],
                 $queue['queue_date'],
-                $data['chief_complaint'],
-                $data['objective_notes']  ?: null,
-                $data['diagnosis'],
-                $data['icd_code']         ?: null,
-                $data['treatment']        ?: null,
-                $data['prescription']     ?: null,
-                $data['lab_notes']        ?: null,
-                $data['follow_up_date'],
-                $data['follow_up_notes']  ?: null,
-                $data['is_referred'],
-                $data['referral_notes']   ?: null,
+                $chief_complaint,           // kolom baru
+                $chief_complaint,           // kolom lama 'complaints' — isi sama
+                $objective_notes ?: null,
+                $diagnosis,
+                $icd_code        ?: null,
+                $treatment       ?: null,
+                $prescription    ?: null,
+                $lab_notes       ?: null,
+                $lab_notes       ?: null,   // kolom lama 'notes' — isi sama
+                $follow_up_date,
+                $follow_up_notes ?: null,
+                $is_referred,
+                $referral_notes  ?: null,
             ]);
             $newRecordId = $db->lastInsertId();
 
-            // Mark queue done
+            // Tandai antrian selesai
             $db->prepare("UPDATE queues SET status='done', done_at=NOW(), updated_at=NOW() WHERE id=?")
                ->execute([$queueId]);
 
             $db->commit();
             flashMessage('success', "Rekam medis untuk {$queue['patient_name']} berhasil disimpan.");
             redirect("medical_records/view?id=$newRecordId");
+
         } catch (Exception $e) {
             $db->rollBack();
             $errors[] = 'Terjadi kesalahan: ' . $e->getMessage();
@@ -130,6 +132,7 @@ $pageTitle  = 'Input Rekam Medis';
 $activeMenu = 'medical_records';
 ob_start();
 ?>
+
 <div class="page-header">
   <div>
     <h1 class="page-title">Rekam Medis — SOAP</h1>
@@ -138,7 +141,7 @@ ob_start();
   <a href="<?= BASE_URL ?>/queues" class="btn btn-outline">← Antrian</a>
 </div>
 
-<!-- Patient info banner -->
+<!-- Banner pasien -->
 <div class="patient-header" style="margin-bottom:20px">
   <div class="patient-avatar"><?= strtoupper(substr($queue['patient_name'],0,2)) ?></div>
   <div>
@@ -146,7 +149,6 @@ ob_start();
     <div class="text-sm text-muted">
       <?= $queue['gender']==='L' ? 'Laki-laki' : 'Perempuan' ?> ·
       <?= calculateAge($queue['birth_date']) ?> tahun ·
-      Gol. <?= $queue['blood_type']==='unknown' ? '—' : sanitize($queue['blood_type']) ?> ·
       <?= sanitize($queue['insurance_type']) ?>
     </div>
     <?php if ($queue['allergy']): ?>
@@ -154,35 +156,30 @@ ob_start();
     <?php endif; ?>
   </div>
 
-  <!-- Vitals from nurse -->
   <?php if ($initCheck): ?>
   <div class="vitals-grid" style="grid-template-columns:repeat(4,auto);gap:8px;margin-left:auto;margin-bottom:0">
     <?php if ($initCheck['blood_pressure']): ?>
     <div class="vital-item">
       <div class="vital-value" style="font-size:16px"><?= sanitize($initCheck['blood_pressure']) ?></div>
-      <div class="vital-unit">mmHg</div>
-      <div class="vital-label">Tekanan Darah</div>
+      <div class="vital-unit">mmHg</div><div class="vital-label">TD</div>
     </div>
     <?php endif; ?>
     <?php if ($initCheck['temperature']): ?>
     <div class="vital-item">
       <div class="vital-value" style="font-size:16px"><?= number_format($initCheck['temperature'],1) ?></div>
-      <div class="vital-unit">°C</div>
-      <div class="vital-label">Suhu</div>
+      <div class="vital-unit">°C</div><div class="vital-label">Suhu</div>
     </div>
     <?php endif; ?>
     <?php if ($initCheck['pulse']): ?>
     <div class="vital-item">
       <div class="vital-value" style="font-size:16px"><?= (int)$initCheck['pulse'] ?></div>
-      <div class="vital-unit">bpm</div>
-      <div class="vital-label">Nadi</div>
+      <div class="vital-unit">bpm</div><div class="vital-label">Nadi</div>
     </div>
     <?php endif; ?>
     <?php if ($initCheck['oxygen_saturation']): ?>
     <div class="vital-item">
       <div class="vital-value" style="font-size:16px"><?= (int)$initCheck['oxygen_saturation'] ?></div>
-      <div class="vital-unit">%</div>
-      <div class="vital-label">SpO₂</div>
+      <div class="vital-unit">%</div><div class="vital-label">SpO₂</div>
     </div>
     <?php endif; ?>
   </div>
@@ -191,7 +188,6 @@ ob_start();
 
 <?php if ($errors): ?>
 <div class="alert alert-error">
-  <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
   <ul style="margin:0;padding-left:16px">
     <?php foreach ($errors as $e): ?><li><?= sanitize($e) ?></li><?php endforeach; ?>
   </ul>
@@ -203,10 +199,10 @@ ob_start();
 
   <div class="two-col-grid">
 
-    <!-- Left: SOAP form -->
+    <!-- KIRI: SOAP -->
     <div class="flex flex-col gap-3">
 
-      <!-- S — Subjective -->
+      <!-- S -->
       <div class="card">
         <div class="card-header" style="background:#E8F5E9;border-bottom-color:#A5D6A7">
           <span class="card-title" style="color:var(--green)">S — Subjective (Keluhan Pasien)</span>
@@ -215,20 +211,19 @@ ob_start();
           <div class="form-group">
             <label class="form-label">Keluhan Utama <span class="req">*</span></label>
             <textarea class="form-control" name="chief_complaint" rows="4" required
-                      placeholder="Deskripsikan keluhan utama dan anamnesis pasien..."><?= sanitize(
+                      placeholder="Keluhan utama dan anamnesis pasien..."><?= sanitize(
               $_POST['chief_complaint'] ?? $initCheck['chief_complaint'] ?? ''
             ) ?></textarea>
             <?php if ($initCheck && $initCheck['chief_complaint']): ?>
-            <div class="form-hint">
-              📋 Catatan perawat (<?= sanitize($initCheck['nurse_name']) ?>):
-              "<?= sanitize(mb_substr($initCheck['chief_complaint'],0,120)) ?>..."
+            <div class="form-hint">📋 Catatan perawat (<?= sanitize($initCheck['nurse_name'] ?? '') ?>):
+              "<?= sanitize(mb_substr($initCheck['chief_complaint'],0,120)) ?>"
             </div>
             <?php endif; ?>
           </div>
         </div>
       </div>
 
-      <!-- O — Objective -->
+      <!-- O -->
       <div class="card">
         <div class="card-header" style="background:var(--blue-pale);border-bottom-color:var(--blue-muted)">
           <span class="card-title" style="color:var(--blue)">O — Objective (Pemeriksaan Fisik)</span>
@@ -238,17 +233,17 @@ ob_start();
             <label class="form-label">Hasil Pemeriksaan Fisik</label>
             <textarea class="form-control" name="objective_notes" rows="4"
                       placeholder="Kondisi umum, pemeriksaan sistem organ, temuan fisik..."><?= sanitize($_POST['objective_notes'] ?? '') ?></textarea>
-            <div class="form-hint">Tanda vital otomatis tercatat dari pemeriksaan perawat.</div>
+            <div class="form-hint">Tanda vital dari perawat sudah tercatat otomatis.</div>
           </div>
           <div class="form-group">
             <label class="form-label">Hasil Lab / Penunjang</label>
             <textarea class="form-control" name="lab_notes" rows="2"
-                      placeholder="Hasil lab, rontgen, USG, dll (jika ada)..."><?= sanitize($_POST['lab_notes'] ?? '') ?></textarea>
+                      placeholder="Hasil lab, rontgen, USG, dll..."><?= sanitize($_POST['lab_notes'] ?? '') ?></textarea>
           </div>
         </div>
       </div>
 
-      <!-- A — Assessment -->
+      <!-- A -->
       <div class="card">
         <div class="card-header" style="background:var(--amber-bg);border-bottom-color:var(--amber-border)">
           <span class="card-title" style="color:var(--amber)">A — Assessment (Diagnosa)</span>
@@ -271,7 +266,7 @@ ob_start();
         </div>
       </div>
 
-      <!-- P — Plan -->
+      <!-- P -->
       <div class="card">
         <div class="card-header" style="background:var(--red-bg);border-bottom-color:var(--red-border)">
           <span class="card-title" style="color:var(--red)">P — Plan (Tindakan & Resep)</span>
@@ -280,22 +275,21 @@ ob_start();
           <div class="form-group">
             <label class="form-label">Tindakan Medis</label>
             <textarea class="form-control" name="treatment" rows="3"
-                      placeholder="Prosedur, tindakan, edukasi, saran gaya hidup..."><?= sanitize($_POST['treatment'] ?? '') ?></textarea>
+                      placeholder="Prosedur, tindakan, edukasi..."><?= sanitize($_POST['treatment'] ?? '') ?></textarea>
           </div>
           <div class="form-group">
             <label class="form-label">Resep Obat</label>
             <textarea class="form-control" name="prescription" rows="4"
-                      placeholder="Nama obat, dosis, frekuensi, durasi&#10;Contoh: Amoxicillin 500mg 3x1 tab, 5 hari"><?= sanitize($_POST['prescription'] ?? '') ?></textarea>
+                      placeholder="Nama obat, dosis, frekuensi, durasi..."><?= sanitize($_POST['prescription'] ?? '') ?></textarea>
           </div>
         </div>
       </div>
 
-    </div><!-- /left -->
+    </div>
 
-    <!-- Right: follow-up + history -->
+    <!-- KANAN: Tindak lanjut + riwayat -->
     <div class="flex flex-col gap-3">
 
-      <!-- Follow-up & referral -->
       <div class="card">
         <div class="card-header"><span class="card-title">Tindak Lanjut</span></div>
         <div class="card-body">
@@ -307,11 +301,11 @@ ob_start();
           <div class="form-group">
             <label class="form-label">Catatan Kontrol</label>
             <textarea class="form-control" name="follow_up_notes" rows="2"
-                      placeholder="Instruksi khusus untuk kontrol berikutnya..."><?= sanitize($_POST['follow_up_notes'] ?? '') ?></textarea>
+                      placeholder="Instruksi untuk kontrol berikutnya..."><?= sanitize($_POST['follow_up_notes'] ?? '') ?></textarea>
           </div>
           <div class="form-group">
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600">
-              <input type="checkbox" name="is_referred"
+              <input type="checkbox" name="is_referred" id="isReferred"
                      <?= ($_POST['is_referred'] ?? 0) ? 'checked' : '' ?>
                      style="width:16px;height:16px">
               Pasien Dirujuk
@@ -321,12 +315,11 @@ ob_start();
                style="display:<?= ($_POST['is_referred'] ?? 0) ? 'block' : 'none' ?>">
             <label class="form-label">Catatan Rujukan</label>
             <textarea class="form-control" name="referral_notes" rows="2"
-                      placeholder="Dirujuk ke: RS / Spesialis / Fasilitas..."><?= sanitize($_POST['referral_notes'] ?? '') ?></textarea>
+                      placeholder="Dirujuk ke: RS / Spesialis..."><?= sanitize($_POST['referral_notes'] ?? '') ?></textarea>
           </div>
         </div>
       </div>
 
-      <!-- Riwayat pasien sebelumnya -->
       <?php if ($prevRecords): ?>
       <div class="card">
         <div class="card-header">
@@ -339,9 +332,7 @@ ob_start();
             <div class="text-xs text-muted"><?= date('d/m/Y', strtotime($pr['visit_date'])) ?></div>
             <div class="text-sm font-semibold"><?= sanitize($pr['diagnosis']) ?></div>
             <?php if ($pr['prescription']): ?>
-            <div class="text-xs text-muted">
-              💊 <?= sanitize(mb_substr($pr['prescription'],0,80)) ?>
-            </div>
+            <div class="text-xs text-muted">💊 <?= sanitize(mb_substr($pr['prescription'],0,80)) ?></div>
             <?php endif; ?>
           </div>
           <?php endforeach; ?>
@@ -349,14 +340,13 @@ ob_start();
       </div>
       <?php endif; ?>
 
-      <!-- Nurse notes from initial check -->
       <?php if ($initCheck && $initCheck['notes']): ?>
       <div class="card" style="border-color:var(--amber-border)">
         <div class="card-header" style="background:var(--amber-bg)">
           <span class="card-title" style="color:var(--amber)">Catatan Perawat</span>
         </div>
         <div class="card-body">
-          <p class="text-sm"><?= sanitize($initCheck['notes']) ?></p>
+          <p class="text-sm"><?= nl2br(sanitize($initCheck['notes'])) ?></p>
           <div class="text-xs text-muted mt-2">— <?= sanitize($initCheck['nurse_name'] ?? 'Perawat') ?>, <?= date('H:i', strtotime($initCheck['checked_at'])) ?></div>
         </div>
       </div>
@@ -370,17 +360,16 @@ ob_start();
         </button>
       </div>
 
-    </div><!-- /right -->
-
+    </div>
   </div>
 </form>
 
 <script>
-// Toggle referral notes
-document.querySelector('input[name="is_referred"]').addEventListener('change', function() {
-  document.getElementById('referralNotesGroup').style.display = this.checked ? 'block' : 'none';
+document.getElementById('isReferred').addEventListener('change', function() {
+    document.getElementById('referralNotesGroup').style.display = this.checked ? 'block' : 'none';
 });
 </script>
+
 <?php
 $pageContent = ob_get_clean();
 require_once __DIR__ . '/../includes/layout.php';
